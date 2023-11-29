@@ -1,0 +1,102 @@
+# MySQL配置
+# 创建PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dev-mysql-pv
+spec:
+  capacity:
+    storage: 10Gi
+  #指定访问模式
+  accessModes:
+    #pv能以readwrite模式mount到单个节点
+    - ReadWriteMany
+  #指定pv的回收策略,即pvc资源释放后的事件.retain(建议,使用动态供给代替)保留pvc的所有文件
+  persistentVolumeReclaimPolicy: Retain
+  #指定pv的class为nfs,相当于为pv分类,pvc将指定class申请pv
+  storageClassName: nfs
+  #指定pv为nfs服务器上对应的目录
+  nfs:
+    path: /data/nfs/mysql111 # 持久化目录
+    server: 192.168.10.105  # 持久化地址
+---
+# 创建PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dev-mysql-pvc
+  namespace: dev
+  selfLink: /api/v1/namespaces/dev/persistentvolumeclaims/dev-mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: dev-mysql-pv
+
+---
+# 创建密文
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: dev
+  name: mysql-password
+immutable: false
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cm9vdEBndW95dW4= # 密文需要使用Base64加密
+---
+# 创建Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guoyun-mysql
+  namespace: guoyun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guoyun-mysql
+  template:
+    metadata:
+      labels:
+        app: guoyun-mysql
+    spec:
+      containers:
+        - name: guoyun-mysql
+          image: mysql:5.7
+          ports:
+            - name: mysql-port
+              containerPort: 3306
+              protocol: TCP
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-password
+                  key: MYSQL_ROOT_PASSWORD
+          volumeMounts:
+            - name: mysqldata
+              mountPath: /usr/lib/docker
+      volumes:
+        - name: mysqldata
+          persistentVolumeClaim:
+            claimName: guoyun-mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: guoyun-mysql-nodeport
+  namespace: guoyun
+spec:
+  selector:
+    app: guoyun-mysql
+  ports:
+    - name: mysql-port
+      port: 3306
+      targetPort: 3306
+      nodePort: 30306
+  type: NodePort
