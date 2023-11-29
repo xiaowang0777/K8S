@@ -1,0 +1,122 @@
+# minio 配置
+# 创建PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: guoyun-minio-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    path: /data/nfs/minio # minio 持久化目录
+    server: 192.168.10.105   # minio 持久化地址
+---
+# 创建PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: guoyun-minio-pvc
+  namespace: guoyun
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: guoyun-minio-pv
+---
+# Minio Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-password
+  namespace: guoyun
+type: Opaque
+data:
+  MINIO_ACCESS_KEY: YWRtaW4=  # base64-encoded value for "admin"
+  MINIO_SECRET_KEY: YWRtaW4xMjM=  # base64-encoded value for "admin123"
+---
+# Minio Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guoyun-minio
+  namespace: guoyun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guoyun-minio
+  template:
+    metadata:
+      labels:
+        app: guoyun-minio
+    spec:
+      containers:
+        - name: guoyun-minio
+          image: minio/minio:latest
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-password
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-password
+                  key: MINIO_SECRET_KEY
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - minio server /data --console-address ":9001"
+          ports:
+            - name: data
+              containerPort: 9000
+              protocol: "TCP"
+            - name: console
+              containerPort: 9001
+              protocol: "TCP"
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 100m
+          volumeMounts:
+            - mountPath: /data
+              name: minio-data
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: guoyun-minio-pvc
+---
+# Minio Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: guoyun-minio
+  namespace: guoyun
+spec:
+  type: NodePort
+  ports:
+    - name: data
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+      nodePort: 39000
+    - name: console
+      port: 9001
+      targetPort: 9001
+      protocol: TCP
+      nodePort: 39001
+  selector:
+    app: guoyun-minio
