@@ -1,0 +1,98 @@
+# Redis 配置
+---
+# Redis PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: guoyun-redis-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    path: /data/nfs/redis
+    server: 192.168.10.105
+---
+# Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: guoyun-redis-pvc
+  namespace: guoyun
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: guoyun-redis-pv
+
+# Redis ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: guoyun
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    port 6379
+    dir /data
+    requirepass root@guoyun
+
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guoyun-redis
+  namespace: guoyun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guoyun-redis
+  template:
+    metadata:
+      labels:
+        app: guoyun-redis
+    spec:
+      containers:
+        - name: guoyun-redis
+          image: redis:latest
+          ports:
+            - name: redis-port
+              containerPort: 6379
+              protocol: TCP
+          volumeMounts:
+            - name: redisdata
+              mountPath: /data
+            - name: redis-config
+              mountPath: /usr/local/etc/redis/redis.conf
+      volumes:
+        - name: redisdata
+          persistentVolumeClaim:
+            claimName: guoyun-redis-pvc
+        - name: redis-config
+          configMap:
+            name: redis-config
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: guoyun-redis
+  namespace: guoyun
+spec:
+  selector:
+    app: guoyun-redis
+  ports:
+    - name: redis-port
+      port: 6379
+      targetPort: 6379
+      nodePort: 36379
+  type: NodePort
