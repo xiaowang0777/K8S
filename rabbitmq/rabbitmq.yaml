@@ -4,6 +4,7 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: guoyun-rabbitmq-pv
+  namespace: guoyun
 spec:
   capacity:
     storage: 5Gi
@@ -20,6 +21,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: guoyun-rabbitmq-pvc
+  namespace: guoyun
 spec:
   accessModes:
     - ReadWriteMany
@@ -34,19 +36,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: rabbit-config
+  namespace: guoyun
 data:
   enabled_plugins: "[rabbitmq_shovel,rabbitmq_shovel_management]."
-
-# 创建密文
-apiVersion: v1
-kind: Secret
-metadata:
-  name: rabbitmq-password
-type: Opaque
-data:
-  RABBITMQ_DEFAULT_USER: Z3VveXVu # Base64 加密后的用户名guoyun
-  RABBITMQ_DEFAULT_PASS: Z3VveXVu # Base64 加密后的密码guoyun
-
 
 # RabbitMQ Deployment
 apiVersion: apps/v1
@@ -55,6 +47,7 @@ metadata:
   labels:
     app: guoyun-rabbitmq
   name: guoyun-rabbitmq
+  namespace: guoyun
 spec:
   replicas: 1
   selector:
@@ -112,6 +105,7 @@ metadata:
   labels:
     app: guoyun-rabbitmq
   name: guoyun-rabbitmq
+  namespace: guoyun
 spec:
   type: NodePort
   ports:
