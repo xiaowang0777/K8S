@@ -1,0 +1,114 @@
+# Neo4j
+# Neo4j PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: guoyun-neo4j-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    path: /data/nfs/neo4j # neo4j 持久化目录
+    server: 192.168.10.105   # neo4j 持久化地址
+---
+# Neo4j PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: guoyun-neo4j-pvc
+  namespace: guoyun
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: guoyun-neo4j-pv
+---
+# Neo4j Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neo4j-password
+  namespace: guoyun
+type: Opaque
+data:
+  NEO4J_AUTH: bmVvNGovZ3VveXVu  # Base64-encoded "neo4j/guoyun"
+---
+# Neo4j Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: guoyun-neo4j
+  name: guoyun-neo4j
+  namespace: guoyun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guoyun-neo4j
+  template:
+    metadata:
+      labels:
+        app: guoyun-neo4j
+    spec:
+      containers:
+        - name: guoyun-neo4j
+          image: neo4j:4.1.4
+          ports:
+            - containerPort: 7474
+              name: http
+            - containerPort: 7473
+              name: https
+            - containerPort: 7687
+              name: bolt
+          env:
+            - name: NEO4J_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: neo4j-password
+                  key: NEO4J_AUTH
+          volumeMounts:
+            - mountPath: /data
+              name: neo4j-data
+      volumes:
+        - name: neo4j-data
+          persistentVolumeClaim:
+            claimName: guoyun-neo4j-pvc
+
+---
+# Neo4j Service
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: guoyun-neo4j
+  name: guoyun-neo4j
+  namespace: guoyun
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 7474
+      targetPort: 7474
+      protocol: TCP
+      nodePort: 37474
+    - name: https
+      port: 7473
+      targetPort: 7473
+      protocol: TCP
+      nodePort: 37473
+    - name: bolt
+      port: 7687
+      targetPort: 7687
+      protocol: TCP
+      nodePort: 37687
+  selector:
+    app: guoyun-neo4j
