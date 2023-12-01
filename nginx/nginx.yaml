@@ -1,0 +1,131 @@
+# Nginx 配置
+# Nginx conf PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: guoyun-nginx-conf-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    path: /data/nfs/nginx/conf # nginx 持久化配置目录
+    server: 192.168.10.105   # nginx 持久化配置地址
+---
+# Nginx conf PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: guoyun-nginx-conf-pvc
+  namespace: guoyun
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: guoyun-nginx-conf-pv
+---
+# Nginx web PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: guoyun-nginx-web-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    path: /data/nfs/nginx/web # nginx 持久化目录
+    server: 192.168.10.105   # nginx 持久化地址
+---
+# Nginx web PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: guoyun-nginx-web-pvc
+  namespace: guoyun
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: nfs
+  volumeMode: Filesystem
+  volumeName: guoyun-nginx-web-pv
+
+---
+# Nginx Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guoyun-nginx
+  namespace: guoyun
+spec:
+  replicas: 1
+  selector: #标签选择器，与上面的标签共同作用
+    matchLabels:
+      app: guoyun-nginx #选择包含标签app:nginx的资源
+  template:  #这是选择或创建的Pod的模板
+    metadata: #Pod的元数据
+      labels: #Pod的标签，上面的selector即选择包含标签app:nginx的Pod
+        app: guoyun-nginx
+    spec: #期望Pod实现的功能（即在pod中部署）
+      containers: #生成container，与docker中的container是同一种
+        - name: guoyun-nginx
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: nginx-last80
+              containerPort: 80 # 开启本容器的80端口可访问
+              protocol: TCP
+            - name: nginx-last81
+              containerPort: 81 # 开启本容器的81端口可访问
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/nginx/conf.d
+              name: nginx-conf
+            - mountPath: /usr/share/nginx/html
+              name: nginx-web
+      restartPolicy: Always
+      volumes:
+        - name: nginx-conf
+          persistentVolumeClaim:
+            claimName: guoyun-nginx-conf-pvc
+        - name: nginx-web
+          persistentVolumeClaim:
+            claimName: guoyun-nginx-web-pvc
+
+---
+# Nginx Service
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: guoyun-nginx
+  name: guoyun-nginx
+  namespace: guoyun
+spec:
+  type: NodePort
+  ports:
+    - name: nginx-last80
+      port: 80
+      targetPort: 80 # 容器nginx对外开放的端口
+      protocol: TCP
+      nodePort: 30080 #外网访问的端口
+    - name: nginx-last81
+      port: 81
+      targetPort: 81
+      protocol: TCP
+      nodePort: 30081
+  selector:
+    app: guoyun-nginx
